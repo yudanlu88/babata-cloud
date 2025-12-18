@@ -37,7 +37,6 @@ st.markdown("""
 
 # --- 3. 异步语音函数 (已解锁时长限制) ---
 async def generate_audio_file(text, filename="output.mp3"):
-    # zh-CN-XiaoxiaoNeural 是目前最自然的中文女声
     communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
     await communicate.save(filename)
 
@@ -46,22 +45,20 @@ with st.sidebar:
     st.title("⚡ 巴巴塔控制台")
     st.caption("V23 Unlocked Voice")
     
-    # 功能模式选择
     app_mode = st.selectbox("切换功能模式", 
         ["💼 商业策划案", "📕 小红书爆款", "📊 职场周报大师", "❤️ 情感/哄人专家"]
     )
     
     st.divider()
     
-    # 商业模式专属选项
     if app_mode == "💼 商业策划案":
         industry = st.selectbox("行业赛道", ["🚀 AI/科技", "🛒 消费/零售", "🏥 医疗", "⚙️ 制造"])
     
     style_mode = st.radio("AI 语气风格", ["专业理性", "毒舌巴巴塔", "温柔贴心", "热情激昂"])
-    word_count = st.slider("生成字数", 200, 3000, 800) # 字数上限调高到3000
+    word_count = st.slider("生成字数", 200, 3000, 800)
     enable_voice = st.toggle("🔊 开启语音朗读", value=True)
 
-# --- 5. 智能 Prompt (核心大脑) ---
+# --- 5. 智能 Prompt ---
 def get_prompt(mode):
     if mode == "💼 商业策划案":
         return """【强制中文】输出商业策划案(Markdown)。结构：🎯摘要、⚡痛点、💎方案、💰模式。请表现得极具商业洞察力。"""
@@ -109,23 +106,26 @@ if submitted and user_input:
                 output_container.markdown(full_text + "▌")
         output_container.markdown(full_text)
         
-        # (2) 语音朗读 (关键修改处)
+        # (2) 语音朗读
         if enable_voice:
-            # 提示语变了，告诉用户因为字多需要等一下
             with st.spinner("正在合成完整语音 (字数较多，请稍等 5-10 秒)..."):
-                
-                # 🔥 修改处：去掉了切片限制，现在会读完全文
-                # 为了防止特殊符号导致语音库报错，还是建议简单清洗一下
                 read_text = full_text.replace("#", "").replace("*", "").replace("=", "").replace("-", "")
-                
-                # 生成完整文件
                 asyncio.run(generate_audio_file(read_text, "voice.mp3"))
                 st.audio("voice.mp3", autoplay=True)
         
-        # (3) 商业图表 (仅商业模式显示)
+        # (3) 商业图表
         if app_mode == "💼 商业策划案":
             st.divider()
             st.subheader("📊 商业数据模型")
             data = [100, 150, 230, 350, 500]
             df = pd.DataFrame(data, columns=["预估营收(万)"])
             st.area_chart(df)
+            
+            fig = go.Figure(go.Scatterpolar(
+                r=[4, 5, 3, 4, 2], theta=['技术','市场','资金','团队','竞争'], fill='toself'
+            ))
+            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 5])), showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"出错啦: {e}")
