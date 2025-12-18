@@ -11,7 +11,8 @@ import io # 新增：用于在内存中处理文件
 # --- 1. 基础配置 ---
 # 注意：在云端部署时，API Key 最好放在 Secrets 里，但为了方便你第一次部署，这里先保留。
 # 如果部署后报错 Key 无效，需要在 Streamlit 后台重新填一下 Key。
-client = OpenAI(api_key="sk-9f67a5b127014879b411c00a9b4a1cd9", base_url="https://api.deepseek.com")
+# 注意：这里不再直接写密码，而是告诉它去"保险箱"里拿
+client = OpenAI(api_key=st.secrets["DEEPSEEK_KEY"], base_url="https://api.deepseek.com")
 st.set_page_config(page_title="商业灵感空间", page_icon="☁️", layout="wide")
 
 # 初始化状态
