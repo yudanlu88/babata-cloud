@@ -7,43 +7,59 @@ import plotly.graph_objects as go
 import io
 import asyncio
 import edge_tts
+import os
 from datetime import datetime
 
 # --- 1. 基础配置 ---
 st.set_page_config(page_title="巴巴塔万能助手", page_icon="⚡", layout="wide")
 
-# 检查 Secrets 密码
 if "DEEPSEEK_KEY" in st.secrets:
     api_key = st.secrets["DEEPSEEK_KEY"]
 else:
-    st.error("⚠️ 请先在 Streamlit 后台配置 Secrets！")
+    st.error("⚠️ 请先配置 Secrets！")
     st.stop()
 
 client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
-if "history" not in st.session_state: st.session_state.history = []
+# --- 2. 数据库逻辑 (新增核心模块) ---
+DB_FILE = "babata_memory.csv"
 
-# --- 2. 视觉系统 ---
-st.markdown("""
-<style>
-    .stApp { background-color: #F5F7FA; }
-    .stButton>button {
-        background-color: #0052D9; color: white; border-radius: 6px;
-        height: 48px; font-weight: 600; width: 100%;
-    }
-    .stButton>button:hover { background-color: #003CAB; }
-</style>
-""", unsafe_allow_html=True)
+def init_db():
+    """初始化数据库：如果文件不存在，就创建一个新的"""
+    if not os.path.exists(DB_FILE):
+        df = pd.DataFrame(columns=["时间", "模式", "主题", "摘要"])
+        df.to_csv(DB_FILE, index=False)
 
-# --- 3. 异步语音函数 (已解锁时长限制) ---
+def save_to_db(mode, topic, content):
+    """保存记忆：把新的记录追加到 CSV 文件末尾"""
+    init_db()
+    # 截取前30个字作为摘要
+    summary = content[:30].replace("#", "").replace("*", "") + "..."
+    new_data = pd.DataFrame([{
+        "时间": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "模式": mode,
+        "主题": topic,
+        "摘要": summary
+    }])
+    new_data.to_csv(DB_FILE, mode='a', header=False, index=False)
+
+def load_from_db():
+    """读取记忆：加载所有历史记录"""
+    init_db()
+    try:
+        return pd.read_csv(DB_FILE)
+    except:
+        return pd.DataFrame(columns=["时间", "模式", "主题", "摘要"])
+
+# --- 3. 异步语音函数 ---
 async def generate_audio_file(text, filename="output.mp3"):
     communicate = edge_tts.Communicate(text, "zh-CN-XiaoxiaoNeural")
     await communicate.save(filename)
 
-# --- 4. 侧边栏 (控制台) ---
+# --- 4. 侧边栏 ---
 with st.sidebar:
     st.title("⚡ 巴巴塔控制台")
-    st.caption("V23 Unlocked Voice")
+    st.caption("V24 Memory Activated")
     
     app_mode = st.selectbox("切换功能模式", 
         ["💼 商业策划案", "📕 小红书爆款", "📊 职场周报大师", "❤️ 情感/哄人专家"]
@@ -61,25 +77,28 @@ with st.sidebar:
 # --- 5. 智能 Prompt ---
 def get_prompt(mode):
     if mode == "💼 商业策划案":
-        return """【强制中文】输出商业策划案(Markdown)。结构：🎯摘要、⚡痛点、💎方案、💰模式。请表现得极具商业洞察力。"""
+        return """【强制中文】输出商业策划案(Markdown)。结构：🎯摘要、⚡痛点、💎方案、💰模式。"""
     elif mode == "📕 小红书爆款":
-        return """你是小红书爆款博主。要求：1.标题带emoji极其抓眼球。2.正文多emoji，语气像闺蜜安利。3.包含：🌟亮点、📝感受、💡避雷。4.结尾带#标签。"""
+        return """你是小红书爆款博主。要求：1.标题带emoji极其抓眼球。2.正文多emoji。3.包含：🌟亮点、📝感受、💡避雷。"""
     elif mode == "📊 职场周报大师":
-        return """你是互联网大厂P8。请把用户输入的简单内容扩写成高大上的周报。多用黑话：赋能、闭环、抓手、沉淀、复盘。结构：✅产出、🚧卡点、📅规划。"""
+        return """你是互联网大厂P8。请把用户输入的简单内容扩写成高大上的周报。多用黑话。"""
     elif mode == "❤️ 情感/哄人专家":
-        return """你是顶级情感专家。如果是哄人，要温柔体贴，提供情绪价值；如果是分析感情，要一针见血但充满关怀。请给出具体的行动建议。"""
+        return """你是顶级情感专家。如果是哄人，要温柔体贴；如果是分析感情，要一针见血。"""
 
 # --- 6. 主界面 ---
 st.title(f"{app_mode}") 
 
+# 历史记录预览 (侧边栏小彩蛋)
+history_df = load_from_db()
+with st.sidebar:
+    st.divider()
+    st.metric("📚 记忆库", f"已存储 {len(history_df)} 条")
+
 with st.form("universal_form"):
-    if app_mode == "💼 商业策划案":
-        placeholder = "输入项目点子，如：火星奶茶店..."
-    elif app_mode == "❤️ 情感/哄人专家":
-        placeholder = "输入情感困惑，如：女朋友生气了怎么哄？..."
-    else:
-        placeholder = "输入核心主题..."
-        
+    if app_mode == "💼 商业策划案": placeholder = "输入项目点子..."
+    elif app_mode == "❤️ 情感/哄人专家": placeholder = "输入情感困惑..."
+    else: placeholder = "输入核心主题..."
+    
     user_input = st.text_input("💡 请输入内容", placeholder=placeholder)
     submitted = st.form_submit_button("🚀 立即生成")
 
@@ -106,26 +125,54 @@ if submitted and user_input:
                 output_container.markdown(full_text + "▌")
         output_container.markdown(full_text)
         
-        # (2) 语音朗读
+        # 🔥 (2) 存入记忆库 (关键动作)
+        save_to_db(app_mode, user_input, full_text)
+        st.toast("✅ 已存入历史档案！") # 弹窗提示
+        
+        # (3) 语音朗读
         if enable_voice:
-            with st.spinner("正在合成完整语音 (字数较多，请稍等 5-10 秒)..."):
-                read_text = full_text.replace("#", "").replace("*", "").replace("=", "").replace("-", "")
+            with st.spinner("正在合成完整语音..."):
+                read_text = full_text.replace("#", "").replace("*", "").replace("=", "")
                 asyncio.run(generate_audio_file(read_text, "voice.mp3"))
                 st.audio("voice.mp3", autoplay=True)
         
-        # (3) 商业图表
+        # (4) 结果展示区 (新增历史档案 Tab)
+        st.divider()
         if app_mode == "💼 商业策划案":
-            st.divider()
-            st.subheader("📊 商业数据模型")
-            data = [100, 150, 230, 350, 500]
-            df = pd.DataFrame(data, columns=["预估营收(万)"])
-            st.area_chart(df)
+            t1, t2, t3 = st.tabs(["📥 下载报告", "📊 数据分析", "📜 历史档案"])
+        else:
+            t1, t2 = st.tabs(["📥 下载内容", "📜 历史档案"])
             
-            fig = go.Figure(go.Scatterpolar(
-                r=[4, 5, 3, 4, 2], theta=['技术','市场','资金','团队','竞争'], fill='toself'
-            ))
-            fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 5])), showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+        with t1:
+            st.markdown("### 📝 文档下载")
+            # Word生成逻辑略...
+            bio_md = io.BytesIO()
+            bio_md.write(full_text.encode('utf-8'))
+            st.download_button("下载 Markdown", bio_md, "report.md")
+
+        with t2 if app_mode != "💼 商业策划案" else t3:
+            # 🔥 历史记录展示区
+            st.markdown("### 📜 记忆回溯")
+            # 重新加载最新数据
+            latest_df = load_from_db()
+            # 显示漂亮的表格
+            st.dataframe(
+                latest_df.iloc[::-1], # 倒序显示，新的在上面
+                column_config={
+                    "时间": st.column_config.TextColumn("生成时间", width="medium"),
+                    "模式": st.column_config.TextColumn("类型", width="small"),
+                    "主题": st.column_config.TextColumn("Prompt", width="medium"),
+                    "摘要": st.column_config.TextColumn("内容预览", width="large"),
+                },
+                use_container_width=True,
+                hide_index=True
+            )
+
+        # 商业图表逻辑
+        if app_mode == "💼 商业策划案":
+            with t2:
+                data = [100, 150, 230, 350, 500]
+                st.area_chart(pd.DataFrame(data, columns=["营收"]))
 
     except Exception as e:
         st.error(f"出错啦: {e}")
